@@ -1,8 +1,8 @@
-# Goodminton Backend 🏸
+# Goodminton Backend 
 
 Backend API for the Goodminton badminton community mobile app.
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Install dependencies
@@ -48,10 +48,17 @@ This backend uses **OTP (One-Time Password) authentication** for mobile apps.
 ## Testing
 
 ```bash
-# Run automated OTP tests
-node test-otp.js
 
 #test with postman 
+HTTP protocol
+POST http://localhost:3001/api/auth/login/otp, Content-Type, Application/Json
+RAW, JSON
+```
+{
+  "email": "poopy@gmail.com"
+}
+```
+
 
 In development mode, the OTP code is printed to the console:
 ```
