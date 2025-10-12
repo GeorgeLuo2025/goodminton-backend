@@ -3,16 +3,24 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
+const http = require("http");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/auth");
+const userRoutes = require("./routes/user");
+const gameRoutes = require("./routes/games");
+const socketService = require("./services/socketService");
 
 // Initialize Express application
 const app = express();
+const server = http.createServer(app);
 
 // Connect to database
 connectDB();
+
+// Initialize Socket.io
+socketService.initialize(server);
 
 // Parse request body
 app.use(express.json({ limit: "10mb" }));
@@ -39,6 +47,8 @@ app.use(limiter);
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/games", gameRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -68,8 +78,9 @@ app.use((error, req, res, next) => {
 
 const PORT = process.env.PORT;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📧 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔗 Client URL: ${process.env.CLIENT_URL}`);
+  console.log(`🔌 Socket.io server ready for connections`);
 });

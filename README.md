@@ -30,21 +30,57 @@ This backend uses **OTP (One-Time Password) authentication** for mobile apps.
 4. Backend returns JWT token
 5. App uses token for authenticated requests
 
-**No passwords, no magic links, no deep linking complexity!**
-
 ## API Endpoints
 
-### Public Routes
+### Authentication Routes (`/api/auth`)
+
+#### Public Routes
 - `POST /api/auth/register` - Create new user
 - `POST /api/auth/login/otp` - Request OTP code
 - `POST /api/auth/verify/otp` - Verify OTP and login
-- `GET /health` - Health check 
 
-### Protected Routes (require JWT token)
-- `GET /api/auth/me` - Get current user
+#### Protected Routes
+- `GET /api/auth/me` - Get current user info
 - `POST /api/auth/logout` - Logout user
 
+### User Routes (`/api/users`)
 
+#### Public Routes
+- `GET /api/users/:id/profile` - Get user's public profile
+
+#### Protected Routes
+- `GET /api/users/leaderboard` - Get friends leaderboard
+- `GET /api/users/friends` - Get friends list
+- `GET /api/users/search?q=query` - Search users
+- `DELETE /api/users/friends/:id` - Remove friend
+
+#### Friend Request Routes (Protected)
+- `POST /api/users/friend-requests` - Send friend request
+- `GET /api/users/friend-requests` - Get pending requests
+- `POST /api/users/friend-requests/:id/accept` - Accept request
+- `POST /api/users/friend-requests/:id/reject` - Reject request
+
+### Game Routes (`/api/games`) - All Protected
+- `POST /api/games` - Create new game
+- `POST /api/games/:id/confirm` - Confirm game result
+- `GET /api/games/pending` - Get pending game confirmations
+
+### System Routes
+- `GET /health` - Health check
+
+### Events Received from Server
+- `connected` - Connection confirmation
+- `friend:request:received` - New friend request
+- `friend:request:accepted` - Your request was accepted
+- `game:confirmation:received` - Game confirmation needed
+- `game:confirmed` - Game was confirmed
+
+### Events Sent to Server
+- `ping` - Health check
+- `friend:request:accept` - Log acceptance (debugging)
+- `friend:request:reject` - Log rejection (debugging)
+- `game:confirm` - Log confirmation (debugging)
+- 
 ## Testing
 
 ```bash

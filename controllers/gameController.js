@@ -2,9 +2,10 @@
  * @file controllers/gameController.js
  * @description 比赛相关的业务逻辑控制器 (Controller for game-related business logic)
  */
-const Game = require('../models/Game');
-const User = require('../models/User');
-const { updateRatings } = require('../services/ratingService');
+const Game = require("../models/Game");
+const User = require("../models/User");
+const { updateRatings } = require("../services/ratingService");
+const socketService = require("../services/socketService");
 
 /**
  * 创建一场新的快速比赛
@@ -20,7 +21,10 @@ exports.createGame = async (req, res) => {
     // 基础数据验证
     // Basic data validation
     if (!opponentId || !scores || !winnerId) {
-      return res.status(400).json({ success: false, error: 'Opponent, scores, and winner are required.' });
+      return res.status(400).json({
+        success: false,
+        error: "Opponent, scores, and winner are required.",
+      });
     }
 
     // 创建新的比赛实例
@@ -30,18 +34,34 @@ exports.createGame = async (req, res) => {
       scores,
       winner: winnerId,
       createdBy: createdBy,
-      pendingConfirmationFrom: opponentId
+      pendingConfirmationFrom: opponentId,
     });
 
     // 保存到数据库
     // Save to the database
     await newGame.save();
 
-    res.status(201).json({ success: true, message: 'Game created. Waiting for opponent confirmation.', game: newGame });
+    // 发送实时通知给对手
+    // Send real-time notification to opponent
+    socketService.notifyUser(opponentId, "game:confirmation:received", {
+      gameId: newGame._id,
+      opponent: {
+        _id: createdBy,
+        profile: { displayName: "Opponent" }, // You might want to populate this
+      },
+      scores: scores,
+      winner: winnerId,
+      message: "Please confirm this game result",
+    });
 
+    res.status(201).json({
+      success: true,
+      message: "Game created. Waiting for opponent confirmation.",
+      game: newGame,
+    });
   } catch (error) {
-    console.error('Create game error:', error);
-    res.status(500).json({ success: false, error: 'Failed to create game.' });
+    console.error("Create game error:", error);
+    res.status(500).json({ success: false, error: "Failed to create game." });
   }
 };
 
@@ -60,19 +80,25 @@ exports.confirmGame = async (req, res) => {
     // Find the game
     const game = await Game.findById(gameId);
     if (!game) {
-      return res.status(404).json({ success: false, error: 'Game not found.' });
+      return res.status(404).json({ success: false, error: "Game not found." });
     }
 
     // 检查当前用户是否有权限确认这场比赛
     // Check if the current user is authorized to confirm this game
     if (game.pendingConfirmationFrom.toString() !== userId) {
-      return res.status(403).json({ success: false, error: 'You are not authorized to confirm this game.' });
+      return res.status(403).json({
+        success: false,
+        error: "You are not authorized to confirm this game.",
+      });
     }
 
     // 检查比赛状态是否为“待确认”
     // Check if the game status is 'pending'
-    if (game.status !== 'pending') {
-      return res.status(400).json({ success: false, error: 'This game has already been resolved.' });
+    if (game.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        error: "This game has already been resolved.",
+      });
     }
 
     // --- 核心逻辑：更新积分 (Core Logic: Update Ratings) ---
@@ -85,7 +111,11 @@ exports.confirmGame = async (req, res) => {
 
     // 调用积分服务计算新积分
     // Call the rating service to calculate new ratings
-    const { newRatingA, newRatingB } = updateRatings(playerA.profile.points, playerB.profile.points, didPlayerAWin);
+    const { newRatingA, newRatingB } = updateRatings(
+      playerA.profile.points,
+      playerB.profile.points,
+      didPlayerAWin
+    );
 
     const ratingChangeA = newRatingA - playerA.profile.points;
     const ratingChangeB = newRatingB - playerB.profile.points;
@@ -103,22 +133,74 @@ exports.confirmGame = async (req, res) => {
     playerB.stats.gamesPlayed += 1;
     if (!didPlayerAWin) playerB.stats.gamesWon += 1;
     await playerB.updateStats(); // 调用模型方法更新胜率 (Call model method to update win rate)
-    
+
     // 更新比赛状态和信息
     // Update the game status and information
-    game.status = 'confirmed';
+    game.status = "confirmed";
     game.confirmedAt = new Date();
     game.ratingChange = {
       playerA: { user: playerA._id, change: ratingChangeA },
-      playerB: { user: playerB._id, change: ratingChangeB }
+      playerB: { user: playerB._id, change: ratingChangeB },
     };
     await game.save();
 
-    res.status(200).json({ success: true, message: 'Game confirmed and ratings updated!', game });
+    // 发送实时通知给创建者
+    // Send real-time notification to game creator
+    const creatorId = game.createdBy.toString();
+    socketService.notifyUser(creatorId, "game:confirmed", {
+      gameId: game._id,
+      confirmedBy: {
+        _id: userId,
+        profile: { displayName: "Player" }, // You might want to populate this
+      },
+      ratingChanges: game.ratingChange,
+      message: "Game result has been confirmed and ratings updated!",
+    });
 
+    res.status(200).json({
+      success: true,
+      message: "Game confirmed and ratings updated!",
+      game,
+    });
   } catch (error) {
-    console.error('Confirm game error:', error);
-    res.status(500).json({ success: false, error: 'Failed to confirm game.' });
+    console.error("Confirm game error:", error);
+    res.status(500).json({ success: false, error: "Failed to confirm game." });
   }
 };
 
+/**
+ * Get pending game confirmations for the current user
+ * Get all games waiting for confirmation from the current user
+ */
+exports.getPendingGameConfirmations = async (req, res) => {
+  try {
+    const currentUserId = req.user.userId;
+
+    const pendingGames = await Game.find({
+      pendingConfirmationFrom: currentUserId,
+      status: "pending",
+    })
+      .populate("players", "profile.displayName profile.avatar email")
+      .populate("winner", "profile.displayName")
+      .populate("createdBy", "profile.displayName")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      pendingGames: pendingGames.map((game) => ({
+        _id: game._id,
+        players: game.players,
+        scores: game.scores,
+        winner: game.winner,
+        createdBy: game.createdBy,
+        createdAt: game.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error("Get pending game confirmations error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch pending game confirmations.",
+    });
+  }
+};
