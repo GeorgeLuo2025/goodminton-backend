@@ -204,3 +204,58 @@ exports.getPendingGameConfirmations = async (req, res) => {
     });
   }
 };
+
+
+/**
+ * 拒绝一个待处理的比赛结果
+ * Reject a pending game result
+ */
+exports.rejectGame = async (req, res) => {
+  try {
+    const gameId = req.params.id;
+    const currentUserId = req.user.userId;
+
+    // 查找比赛 (Find the game)
+    const game = await Game.findById(gameId);
+
+    if (!game) {
+      return res.status(404).json({ success: false, error: "Game not found." });
+    }
+
+    // 验证是否是等待该用户确认 (Verify if this user is the one pending confirmation)
+    if (game.pendingConfirmationFrom.toString() !== currentUserId) {
+      return res.status(403).json({
+        success: false,
+        error: "You are not authorized to reject this game.",
+      });
+    }
+
+    // 检查比赛状态是否是'pending' (Check if the game status is 'pending')
+    if (game.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        error: "This game has already been responded to.",
+      });
+    }
+
+    // 更新比赛状态为'rejected' (Update the game status to 'rejected')
+    game.status = "rejected";
+    await game.save();
+
+    // 向创建者发送实时通知 (Send a real-time notification to the creator)
+    const creatorId = game.players.find(p => p.toString() !== currentUserId);
+    socketService.notifyUser(creatorId.toString(), "game:rejected", {
+      gameId: game._id,
+      rejectedBy: currentUserId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Game rejected successfully.",
+      game,
+    });
+  } catch (error) {
+    console.error("Reject game error:", error);
+    res.status(500).json({ success: false, error: "Failed to reject game." });
+  }
+};

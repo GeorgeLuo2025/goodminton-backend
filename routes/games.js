@@ -23,4 +23,9 @@ router.post("/:id/confirm", gameController.confirmGame);
 // @desc    获取待确认的比赛列表 (Get pending game confirmations)
 router.get("/pending", gameController.getPendingGameConfirmations);
 
+// @route   POST /api/games/:id/reject
+// @desc    拒绝一个待处理的比赛结果 (Reject a pending game result)
+// @access  Private
+router.post("/:id/reject", authenticateToken, gameController.rejectGame);
+
 module.exports = router;
