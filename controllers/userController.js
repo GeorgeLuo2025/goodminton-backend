@@ -480,8 +480,8 @@ exports.searchUsers = async (req, res) => {
     // Search for users by email or display name
     const users = await User.find({
       $and: [
-        { _id: { $ne: currentUserId } }, // Exclude current user
-        { publicProfile: { $ne: false } }, // Only public profiles
+        { _id: { $ne: currentUserId } }, 
+        { publicProfile: { $ne: false } }, 
         {
           $or: [
             { email: { $regex: q, $options: "i" } },
@@ -515,6 +515,83 @@ exports.searchUsers = async (req, res) => {
 };
 
 /**
+ * Check friendship status between the current user and another user
+ */
+exports.checkFriendshipStatus = async (req, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    const currentUserId = req.user.userId;
+
+    if (!targetUserId) {
+      return res.status(400).json({
+        success: false,
+        error: "User ID is required.",
+      });
+    }
+
+    const targetUser = await User.findById(targetUserId).select(
+      "_id profile.displayName"
+    );
+
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found.",
+      });
+    }
+
+    const currentUser = await User.findById(currentUserId);
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        error: "Current user not found.",
+      });
+    }
+
+    const isFriends = currentUser.isFriend(targetUserId);
+
+    let pendingRequest = null;
+    if (!isFriends) {
+      const existingRequest = await FriendRequest.findOne({
+        $or: [
+          { from: currentUserId, to: targetUserId },
+          { from: targetUserId, to: currentUserId },
+        ],
+        status: "pending",
+      }).populate("from to", "profile.displayName");
+
+      if (existingRequest) {
+        pendingRequest = {
+          _id: existingRequest._id,
+          sentByCurrentUser:
+            existingRequest.from._id.toString() === currentUserId,
+          from: existingRequest.from,
+          to: existingRequest.to,
+          createdAt: existingRequest.createdAt,
+        };
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      isFriends,
+      pendingRequest,
+      user: {
+        _id: targetUser._id,
+        displayName: targetUser.profile.displayName,
+      },
+    });
+  } catch (error) {
+    console.error("Check friendship status error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to check friendship status.",
+    });
+  }
+};
+
+/**
  * 获取当前用户的好友排行榜
  * Get the current user's friend leaderboard
  */
@@ -522,11 +599,10 @@ exports.getFriendsLeaderboard = async (req, res) => {
   try {
     // 1. 从数据库中查找当前用户，并使用 .populate() 一次性加载他所有好友的必要信息
     // 1. Find the current user and populate necessary info for their friends
-    const currentUser = await User.findById(req.user.userId)
-      .populate(
-        "friends",
-        "profile.displayName profile.points email" // 我们只需要好友的昵称、积分和邮箱
-      );
+    const currentUser = await User.findById(req.user.userId).populate(
+      "friends",
+      "profile.displayName profile.points email" // 我们只需要好友的昵称、积分和邮箱
+    );
 
     if (!currentUser) {
       return res
@@ -549,7 +625,6 @@ exports.getFriendsLeaderboard = async (req, res) => {
     // 5. 将排序后的排行榜作为成功响应返回
     // 5. Send the sorted leaderboard as a success response
     res.status(200).json({ success: true, leaderboard });
-
   } catch (error) {
     console.error("Get leaderboard error:", error);
     res

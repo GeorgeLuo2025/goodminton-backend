@@ -71,4 +71,12 @@ router.delete("/friends/:id", authenticateToken, userController.removeFriend);
 // @desc    搜索用户 (Search for users by email or display name)
 router.get("/search", authenticateToken, userController.searchUsers);
 
+// @route   GET /api/users/:userId/friendship-status
+// @desc    检查当前用户与指定用户的好友状态 (Check friendship status with a specific user)
+router.get(
+  "/:userId/friendship-status",
+  authenticateToken,
+  userController.checkFriendshipStatus
+);
+
 module.exports = router;

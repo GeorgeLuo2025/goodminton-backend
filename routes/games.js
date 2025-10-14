@@ -23,6 +23,10 @@ router.post("/:id/confirm", gameController.confirmGame);
 // @desc    获取待确认的比赛列表 (Get pending game confirmations)
 router.get("/pending", gameController.getPendingGameConfirmations);
 
+// @route   GET /api/games/weekly
+// @desc    Get current week's confirmed games for authenticated user (Sunday-Saturday)
+router.get("/weekly", gameController.getWeeklyGames);
+
 // @route   POST /api/games/:id/reject
 // @desc    拒绝一个待处理的比赛结果 (Reject a pending game result)
 // @access  Private
