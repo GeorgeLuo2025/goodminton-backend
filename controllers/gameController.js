@@ -204,3 +204,94 @@ exports.getPendingGameConfirmations = async (req, res) => {
     });
   }
 };
+
+/**
+ * Calculate set wins from badminton scores
+ * @param {Array} scores - 2D array of set scores [[21, 18], [15, 21]]
+ * @param {Array} players - Array of player objects
+ * @param {String} currentUserId - The current user's ID
+ * @returns {Array} Array of set wins [playerSetWins, opponentSetWins]
+ */
+const calculateSetWins = (scores, players, currentUserId) => {
+  const playerIndex = players.findIndex(
+    (p) => p._id.toString() === currentUserId
+  );
+  const opponentIndex = playerIndex === 0 ? 1 : 0;
+
+  let playerSetWins = 0;
+  let opponentSetWins = 0;
+
+  scores.forEach((set) => {
+    if (set[playerIndex] > set[opponentIndex]) {
+      playerSetWins++;
+    } else {
+      opponentSetWins++;
+    }
+  });
+
+  return playerIndex === 0
+    ? [playerSetWins, opponentSetWins]
+    : [opponentSetWins, playerSetWins];
+};
+
+/**
+ * Get weekly games for the authenticated user (Sunday - Saturday)
+ */
+exports.getWeeklyGames = async (req, res) => {
+  try {
+    const currentUserId = req.user.userId;
+
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - dayOfWeek);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const games = await Game.find({
+      players: currentUserId,
+      status: "confirmed",
+      confirmedAt: { $gte: weekStart, $lte: weekEnd },
+    })
+      .populate("players", "profile.displayName")
+      .populate("winner", "_id")
+      .sort({ confirmedAt: -1 });
+
+    const formattedGames = games.map((game) => {
+      const setWins = calculateSetWins(
+        game.scores,
+        game.players,
+        currentUserId
+      );
+
+      const playerNames = game.players.map(
+        (player) => player.profile.displayName || "Unknown Player"
+      );
+
+      const isWinner = game.winner._id.toString() === currentUserId;
+
+      return {
+        id: game._id.toString(),
+        time: game.confirmedAt.toISOString(),
+        players: playerNames,
+        scores: setWins,
+        result: isWinner ? "win" : "loss",
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      games: formattedGames,
+    });
+  } catch (error) {
+    console.error("Get weekly games error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch weekly games.",
+    });
+  }
+};

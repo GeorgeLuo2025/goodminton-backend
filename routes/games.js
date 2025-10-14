@@ -23,4 +23,8 @@ router.post("/:id/confirm", gameController.confirmGame);
 // @desc    获取待确认的比赛列表 (Get pending game confirmations)
 router.get("/pending", gameController.getPendingGameConfirmations);
 
+// @route   GET /api/games/weekly
+// @desc    Get current week's confirmed games for authenticated user (Sunday-Saturday)
+router.get("/weekly", gameController.getWeeklyGames);
+
 module.exports = router;
